@@ -3,6 +3,7 @@
 library(DT)
 library(stringr)
 library(dplyr)
+library(xlsx)
 # Define server logic required to draw a histogram
 shinyServer(function(input, output, session) {
   updateSelectizeInput(session,
@@ -20,6 +21,27 @@ shinyServer(function(input, output, session) {
           CAR_pred %in% as.numeric(input$CAR_presence)
       )
     )
+  })
+  
+  compareGroupsDat <- eventReactive(input$runPseudo, {
+    comparison <- input$comparisonChoice
+    columnOfImportance <- case_when(startsWith(comparison, 'hypoxia')~'hypoxia',
+                                    startsWith(comparison, 'day')~'day',
+                                    startsWith(comparison, 'CD') ~ 'CD_pred',
+                                    startsWith(comparison, 'CAR_pred')~'CAR_pred',
+                                    startsWith(comparison, 'CAR_M')~'CAR',
+                                    startsWith(comparison, 'CAR_u')~'CAR')
+    
+    referenceVar <- str_extract(comparison, "_(?!.*_).*")
+    referenceVar <- sub('.', '', referenceVar)
+    dat <- selected()
+    dat[[]][[columnOfImportance]] <- relevel(factor(dat[[]][[columnOfImportance]]), ref = referenceVar)
+    varList <- dat[[]] %>% select('hypoxia', 'day', 'CAR', 'CD_pred', 'CAR_pred', 'donor_id') %>% 
+      sapply(unique) %>% lapply(length)
+    designVars <- names(which(varList>1))
+    dat_bulk <- getPseudoBulkObject(dat, c(designVars))
+    dat_bulk <- DESeq(dat_bulk)
+    results(dat_bulk, name=input$comparisonChoice)
   })
   
   # selectedVolc <- eventReactive(input$Submit, { #This won't work with the resultsNames inputs for volcData below
@@ -120,26 +142,35 @@ shinyServer(function(input, output, session) {
   })
   
   output$DifferentialGeneList <- renderDataTable({
-    comparison <- input$comparisonChoice
-    columnOfImportance <- case_when(startsWith(comparison, 'hypoxia')~'hypoxia',
-                                    startsWith(comparison, 'day')~'day',
-                                    startsWith(comparison, 'CD') ~ 'CD_pred',
-                                    startsWith(comparison, 'CAR_pred')~'CAR_pred',
-                                    startsWith(comparison, 'CAR_M')~'CAR',
-                                    startsWith(comparison, 'CAR_u')~'CAR')
-    
-    referenceVar <- str_extract(comparison, "_(?!.*_).*")
-    referenceVar <- sub('.', '', referenceVar)
+    dat <- compareGroupsDat()
+    dat[order(dat$padj),]  %>% as.data.frame() %>% head(n = 100)
+  })
+
+  output$curSubset <- renderText({
     dat <- selected()
-    dat[[]][[columnOfImportance]] <- relevel(factor(dat[[]][[columnOfImportance]]), ref = referenceVar)
-    varList <- dat[[]] %>% select('hypoxia', 'day', 'CAR', 'CD_pred', 'CAR_pred', 'donor_id') %>% 
-      sapply(unique) %>% lapply(length)
-    designVars <- names(which(varList>1))
-    dat_bulk <- getPseudoBulkObject(dat, c(designVars))
-    dat_bulk <- DESeq(dat_bulk)
-    res_dat_bulk <- results(dat_bulk, name=input$comparisonChoice)
-    res_dat_bulk[order(res_dat_bulk$padj),]  %>% as.data.frame() %>% head(n = 100)
-
-  }) %>% bindEvent(input$runPseudo)
-
+    hypoxiaVals <- paste(as.character(unique(dat$hypoxia)), collapse = ' ')
+    CARVals <-  paste(as.character(unique(dat$CAR)), collapse = ' ')
+    dayVals <- paste(as.character(unique(dat$day)), collapse = ' ')
+    CDVals <- paste(as.character(unique(dat$CD_pred)), collapse = ' ')
+    CARPredVals <- paste(as.character(unique(dat$CAR_pred)), collapse = ' ')
+    
+    paste('Current subset:<br> <B>hypoxia values:</B> ', hypoxiaVals, 
+          ' <br><B>CAR values:</B> ', CARVals,
+          ' <br><B>Day values:</B> ', dayVals,
+          ' <br><B>CD values:</B> ', CDVals,
+          ' <br><B>CAR presence values:</B> ', CARPredVals)
+  })
+  
+  output$downloadExcel <- downloadHandler(
+       filename = function() {
+        paste(input$comparisonChoice, Sys.Date(), '.xlsx', sep='')
+      },
+     content = function(con) {
+       dat <- compareGroupsDat()
+       dat <- dat[order(dat$padj),]  %>% as.data.frame() %>% head(n = 100)
+       write.xlsx(dat, con, sheetName = "Sheet1",
+                  col.names = TRUE, row.names = TRUE, append = FALSE)
+     }
+    )
+    
 })

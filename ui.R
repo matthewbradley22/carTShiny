@@ -58,7 +58,9 @@ shinyUI(fluidPage(
                                                                                "CAR_pred_1_vs_0")),
                actionButton("runPseudo","Run"),
                p("Make sure to click 'submit' on the sidebar before clicking 'Run', whether you subset the data or not"),
-               withSpinner(DT::dataTableOutput("DifferentialGeneList"), color="#0dc5c1"))
+               withSpinner(DT::dataTableOutput("DifferentialGeneList"), color="#0dc5c1"),
+               htmlOutput('curSubset'),
+               downloadButton('downloadExcel', label = "Download", class = NULL))
     ),
  
   )
