@@ -19,8 +19,8 @@ shinyUI(fluidPage(
                        selected = c('HH', 'NH', 'NN', 'untransduced')),
     checkboxGroupInput('day_Groups', 'Day', choices = c('D7', 'D13'),
                        selected = c('D7', 'D13')),
-    checkboxGroupInput('CAR_presence', 'CAR presence', choices = c('0', '1'),
-                       selected = c('0', '1')),
+    checkboxGroupInput('CAR_presence', 'CAR presence', choices = c('carNeg', 'carPos'),
+                       selected = c('carNeg', 'carPos')),
     radioButtons('vlnGroup', 'Group Violin-Plot', c('CAR', 'CD_pred', 'hypoxia', 'day')),
     actionButton("Submit", "Submit", class = "btn-lg btn-success")
   ),
@@ -29,11 +29,10 @@ shinyUI(fluidPage(
   mainPanel(
     tabsetPanel(
       tabPanel('Summary Plots',
-                 plotOutput("violinPlot", height=400, width = 600),
-                 plotOutput("dotPlot", height=400, width = 400)
+                 plotOutput("violinPlot", height=400, width = 600)
                ),
-      tabPanel('UMAP', plotOutput("dimPlot1", height=400, width = 400)),
       tabPanel('Gene Lists',
+               h2('This is now outdated, need to update with new dataset'),
                p(em("For each gene, these tables show the number of sub comparisons that have this gene
                  as a top DEG (in the top 20). For example, in the HH vs NN comparison, SBF2 shows up in 13 of the
                  30 subcomparisons as a top 20 DEG. You can view which subcomparisons by typing SBF2 in the box below
@@ -44,6 +43,7 @@ shinyUI(fluidPage(
                textInput('geneForListSearch', 'Gene'),
                DT::dataTableOutput("comparisonsList")),
       tabPanel('Compare Two Groups',
+               p("Make sure to click 'Submit' on the sidebar before clicking 'Run', whether you subset the data or not."),
                selectInput('comparisonChoice', 'Choose comparison', choices = c("hypoxia_NH_vs_HH",
                                                                                "hypoxia_NN_vs_HH",
                                                                                "hypoxia_NH_vs_NN",
@@ -55,12 +55,19 @@ shinyUI(fluidPage(
                                                                                "CAR_M28z_vs_MBBz",
                                                                                "day_D13_vs_D7",
                                                                                "CD_pred_CD8_vs_CD4",
-                                                                               "CAR_pred_1_vs_0")),
+                                                                               "carExpression_carPos_vs_carNeg")),
+               checkboxInput('removeTrivial', 'Remove Trivial Genes', value = FALSE),
                actionButton("runPseudo","Run"),
-               p("Make sure to click 'submit' on the sidebar before clicking 'Run', whether you subset the data or not"),
                withSpinner(DT::dataTableOutput("DifferentialGeneList"), color="#0dc5c1"),
                htmlOutput('curSubset'),
-               downloadButton('downloadExcel', label = "Download", class = NULL))
+               downloadButton('downloadExcel', label = "Download", class = NULL)),
+      tabPanel('UMAP', 
+               sliderInput('numNeighbors', 'Choose a number of neighbors', min = 1, max = 40, value = 20),
+               actionButton("SubmitUMAP", "Submit", class = "btn-lg btn-success"),
+               withSpinner(plotOutput("dimPlot1", height=400, width = 400), color="#0dc5c1"),
+               selectInput('findMarkersIdent', 'Select Group', choices = NULL),
+               DT::dataTableOutput("SeuratClusterDEGs"),
+               actionButton("GenerateDEGs", "Generate DEGs", class = "btn-lg btn-success")),
     ),
  
   )

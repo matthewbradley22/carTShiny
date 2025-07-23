@@ -18,7 +18,7 @@ shinyServer(function(input, output, session) {
         CD_pred %in% input$CD_groups & CAR %in% input$CAR_groups &
           hypoxia %in% input$Hypoxia_groups &
           day %in% input$day_Groups &
-          CAR_pred %in% as.numeric(input$CAR_presence)
+          carExpression %in% input$CAR_presence
       )
     )
   })
@@ -28,7 +28,7 @@ shinyServer(function(input, output, session) {
     columnOfImportance <- case_when(startsWith(comparison, 'hypoxia')~'hypoxia',
                                     startsWith(comparison, 'day')~'day',
                                     startsWith(comparison, 'CD') ~ 'CD_pred',
-                                    startsWith(comparison, 'CAR_pred')~'CAR_pred',
+                                    startsWith(comparison, 'carExpression')~'carExpression',
                                     startsWith(comparison, 'CAR_M')~'CAR',
                                     startsWith(comparison, 'CAR_u')~'CAR')
     
@@ -36,7 +36,7 @@ shinyServer(function(input, output, session) {
     referenceVar <- sub('.', '', referenceVar)
     dat <- selected()
     dat[[]][[columnOfImportance]] <- relevel(factor(dat[[]][[columnOfImportance]]), ref = referenceVar)
-    varList <- dat[[]] %>% select('hypoxia', 'day', 'CAR', 'CD_pred', 'CAR_pred', 'donor_id') %>% 
+    varList <- dat[[]] %>% select('hypoxia', 'day', 'CAR', 'CD_pred', 'carExpression', 'donor_id') %>% 
       sapply(unique) %>% lapply(length)
     designVars <- names(which(varList>1))
     dat_bulk <- getPseudoBulkObject(dat, c(designVars))
@@ -44,6 +44,16 @@ shinyServer(function(input, output, session) {
     results(dat_bulk, name=input$comparisonChoice)
   })
   
+  UMAPDat <- eventReactive(input$SubmitUMAP, {
+    dat <- selected()
+    dat <- NormalizeData(dat)
+    dat <-FindVariableFeatures(dat, selection.method = "vst", nfeatures = 2000)
+    dat <- RunPCA(dat, features = VariableFeatures(object = dat))
+    dat <- FindNeighbors(dat, dims = 1:input$numNeighbors)
+    dat <- FindClusters(dat, resolution = 0.5)
+    dat <- RunUMAP(dat, dims = 1:input$numNeighbors)
+    dat
+  })
   # selectedVolc <- eventReactive(input$Submit, { #This won't work with the resultsNames inputs for volcData below
   #   (
   #     cd4CARPseudoBulk[cd4CARPseudoBulk$CD_pred %in% input$CD_groups & 
@@ -58,10 +68,23 @@ shinyServer(function(input, output, session) {
   #   lfcShrink(cd4CARPseudoBulk, coef = coefChoice, type = "apeglm")
   # })
   
-  output$dimPlot1 <- renderPlot({
-    #selected <- subset(carPosT, CD_pred == input$CD_groups & CAR %in% input$CAR_groups &
-    # hypoxia %in% input$Hypoxia_groups)
-    FeaturePlot(selected(), features = input$feature, slot = 'data')
+  #Need to add another button to run through these cleaning steps so they can be applied
+  #for findmarkers as well
+  output$dimPlot1 <- renderPlot({ 
+    dat <- UMAPDat()
+    DimPlot(dat)
+  })
+  
+  observeEvent(input$SubmitUMAP,{
+    dat = UMAPDat()
+    updateSelectInput(session, "findMarkersIdent", choices = sort(unique((dat$seurat_clusters))))
+  })
+  
+
+  output$SeuratClusterDEGs <- renderDataTable({
+      dat <- UMAPDat()
+      markers <- FindMarkers(dat, group.by = 'seurat_clusters', ident.1 = as.numeric(input$findMarkersIdent))
+      markers[markers$p_val_adj < 0.01,]
   })
   
   output$violinPlot <- renderPlot({
@@ -69,14 +92,6 @@ shinyServer(function(input, output, session) {
             features = input$feature,
             group.by = input$vlnGroup)
   })
-  
-  output$dotPlot <- renderPlot({
-    DotPlot(selected(),
-            features = input$feature,
-            group.by = input$vlnGroup,
-            scale = FALSE)
-  })
-  
   
   
   output$VolcanoPlot <- renderPlot({
@@ -143,7 +158,10 @@ shinyServer(function(input, output, session) {
   
   output$DifferentialGeneList <- renderDataTable({
     dat <- compareGroupsDat()
-    dat[order(dat$padj),]  %>% as.data.frame() %>% head(n = 100)
+    if(input$removeTrivial){
+      dat <- dat[!grepl('^MT', rownames(dat)),] #Remove mitochondrial genes
+    }
+    dat[order(dat$padj),]  %>% as.data.frame() %>% head(n = 1000)
   })
 
   output$curSubset <- renderText({
@@ -152,7 +170,7 @@ shinyServer(function(input, output, session) {
     CARVals <-  paste(as.character(unique(dat$CAR)), collapse = ' ')
     dayVals <- paste(as.character(unique(dat$day)), collapse = ' ')
     CDVals <- paste(as.character(unique(dat$CD_pred)), collapse = ' ')
-    CARPredVals <- paste(as.character(unique(dat$CAR_pred)), collapse = ' ')
+    CARPredVals <- paste(as.character(unique(dat$carExpression)), collapse = ' ')
     
     paste('Current subset:<br> <B>hypoxia values:</B> ', hypoxiaVals, 
           ' <br><B>CAR values:</B> ', CARVals,
@@ -167,7 +185,7 @@ shinyServer(function(input, output, session) {
       },
      content = function(con) {
        dat <- compareGroupsDat()
-       dat <- dat[order(dat$padj),]  %>% as.data.frame() %>% head(n = 100)
+       dat <- dat[order(dat$padj),]  %>% as.data.frame() %>% head(n = 1000)
        write.xlsx(dat, con, sheetName = "Sheet1",
                   col.names = TRUE, row.names = TRUE, append = FALSE)
      }
