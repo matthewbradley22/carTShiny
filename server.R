@@ -1,16 +1,16 @@
-#library(EnhancedVolcano)
-#library(apeglm)
+#Load libraries
 library(DT)
 library(stringr)
 library(dplyr)
 library(xlsx)
-# Define server logic required to draw a histogram
+
 shinyServer(function(input, output, session) {
   updateSelectizeInput(session,
                        'feature',
                        choices = rownames(T_cells_noCC[['RNA']]),
                        server = TRUE)
   
+  #Subset dataset when user presses submit on sidebar
   selected <- eventReactive(input$Submit, {
     (
       subset(
@@ -23,6 +23,7 @@ shinyServer(function(input, output, session) {
     )
   })
   
+  #Create pseudobulk comparison when user clicks run
   compareGroupsDat <- eventReactive(input$runPseudo, {
     comparison <- input$comparisonChoice
     columnOfImportance <- case_when(startsWith(comparison, 'hypoxia')~'hypoxia',
@@ -44,6 +45,7 @@ shinyServer(function(input, output, session) {
     results(dat_bulk, name=input$comparisonChoice)
   })
   
+  #Create data for UMAP
   UMAPDat <- eventReactive(input$SubmitUMAP, {
     dat <- selected()
     dat <- NormalizeData(dat)
@@ -54,6 +56,7 @@ shinyServer(function(input, output, session) {
     dat <- RunUMAP(dat, dims = 1:input$numNeighbors)
     dat
   })
+  
   # selectedVolc <- eventReactive(input$Submit, { #This won't work with the resultsNames inputs for volcData below
   #   (
   #     cd4CARPseudoBulk[cd4CARPseudoBulk$CD_pred %in% input$CD_groups & 
@@ -68,8 +71,7 @@ shinyServer(function(input, output, session) {
   #   lfcShrink(cd4CARPseudoBulk, coef = coefChoice, type = "apeglm")
   # })
   
-  #Need to add another button to run through these cleaning steps so they can be applied
-  #for findmarkers as well
+  
   output$dimPlot1 <- renderPlot({ 
     dat <- UMAPDat()
     DimPlot(dat)
@@ -94,17 +96,17 @@ shinyServer(function(input, output, session) {
   })
   
   
-  output$VolcanoPlot <- renderPlot({
-    EnhancedVolcano(
-      volcData(),
-      lab = rownames(volcData()),
-      x = 'log2FoldChange',
-      y = 'pvalue',
-      title = 'filler',
-      max.overlaps =  15,
-      drawConnectors = TRUE
-    )
-  })
+  # output$VolcanoPlot <- renderPlot({
+  #   EnhancedVolcano(
+  #     volcData(),
+  #     lab = rownames(volcData()),
+  #     x = 'log2FoldChange',
+  #     y = 'pvalue',
+  #     title = 'filler',
+  #     max.overlaps =  15,
+  #     drawConnectors = TRUE
+  #   )
+  # })
 
   output$GeneList <- renderDataTable({
     comparison <- input$variableComparison
